@@ -35,11 +35,11 @@ export default function Login() {
   // ✅ OAuth2 Login Handlers
   const handleGoogleLogin = () => {
     // Redirige al backend OAuth2 endpoint
-    window.location.href = 'http://localhost:8081/oauth2/authorize/google';
+    window.location.href = 'http://localhost:8081/oauth2/authorization/google';
   };
 
   const handleMicrosoftLogin = () => {
-    window.location.href = 'http://localhost:8081/oauth2/authorize/microsoft';
+    window.location.href = 'http://localhost:8081/oauth2/authorization/microsoft';
   };
 
   return (

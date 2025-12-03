@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
 import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { jwtDecode } from 'jwt-decode';
 
 export default function OAuth2Callback() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { login } = useAuth();
-  const [status, setStatus] = useState('processing'); // processing | success | error
+  const [status, setStatus] = useState('processing');
   const [message, setMessage] = useState('Processing OAuth2 login...');
 
   useEffect(() => {
@@ -16,55 +15,70 @@ export default function OAuth2Callback() {
 
   const handleOAuth2Callback = async () => {
     try {
-      // ✅ Extraer token de la URL
+      console.log('🔄 OAuth2 Callback - URL:', window.location.href);
+      console.log('🔄 Search params:', Object.fromEntries(searchParams.entries()));
+
       const token = searchParams.get('token');
       const success = searchParams.get('success');
       const error = searchParams.get('error');
       
+      // ❌ Error en OAuth2
       if (error) {
+        console.error('❌ OAuth2 error:', error);
         setStatus('error');
         setMessage(`Authentication failed: ${error}`);
         setTimeout(() => navigate('/login'), 3000);
         return;
       }
 
-      if (!token || success !== 'true') {
+      // ❌ No hay token
+      if (!token) {
+        console.error('❌ No token received');
+        console.log('Full URL:', window.location.href);
         setStatus('error');
-        setMessage('No authentication token received');
+        setMessage('No authentication token received from server');
         setTimeout(() => navigate('/login'), 3000);
         return;
       }
 
-      // ✅ Guardar token en localStorage
+      console.log('✅ Token received:', token.substring(0, 20) + '...');
+
+      // ✅ Decodificar token
+      const decoded = jwtDecode(token);
+      console.log('✅ Token decoded:', decoded);
+      
+      // ✅ Verificar userId
+      if (!decoded.userId) {
+        console.error('❌ userId missing in token!');
+        console.log('Token claims:', decoded);
+        setStatus('error');
+        setMessage('Invalid token: userId missing');
+        setTimeout(() => navigate('/login'), 3000);
+        return;
+      }
+
+      // ✅ Guardar token y refreshToken si existe
       localStorage.setItem('token', token);
       
-      // ✅ Decodificar para obtener userId
-      const { jwtDecode } = await import('jwt-decode');
-      const decoded = jwtDecode(token);
-      
-      console.log('✅ OAuth2 token received:', decoded);
-      
-      // ✅ Verificar que tenga userId
-      if (!decoded.userId) {
-        console.error('❌ userId missing in OAuth2 token!');
-        setStatus('error');
-        setMessage('Authentication error: Invalid token structure');
-        setTimeout(() => navigate('/login'), 3000);
-        return;
+      const refreshToken = searchParams.get('refreshToken');
+      if (refreshToken) {
+        localStorage.setItem('refreshToken', refreshToken);
       }
 
+      console.log('✅ Token saved to localStorage');
+
       setStatus('success');
-      setMessage('Login successful! Redirecting...');
+      setMessage('Login successful! Redirecting to dashboard...');
       
-      // Redirigir al dashboard
+      // ✅ Esperar 1 segundo y redirigir SIN recargar la página
       setTimeout(() => {
-        window.location.href = '/dashboard'; // Force refresh para cargar contexto
-      }, 1500);
+        navigate('/dashboard', { replace: true });
+      }, 1000);
       
     } catch (err) {
-      console.error('OAuth2 callback error:', err);
+      console.error('❌ OAuth2 callback error:', err);
       setStatus('error');
-      setMessage('An unexpected error occurred');
+      setMessage(`Error: ${err.message}`);
       setTimeout(() => navigate('/login'), 3000);
     }
   };
@@ -77,6 +91,9 @@ export default function OAuth2Callback() {
             <Loader2 className="w-16 h-16 text-indigo-600 mx-auto mb-4 animate-spin" />
             <h2 className="text-2xl font-bold text-gray-900 mb-2">Processing Login</h2>
             <p className="text-gray-600">{message}</p>
+            <p className="text-xs text-gray-400 mt-4">
+              Check browser console for details
+            </p>
           </>
         )}
 
