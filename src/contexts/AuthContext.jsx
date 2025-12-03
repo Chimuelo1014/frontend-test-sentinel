@@ -2,8 +2,6 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import { authAPI } from '../services/api';
 import { jwtDecode } from "jwt-decode";
 
-
-
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
@@ -15,13 +13,30 @@ export const AuthProvider = ({ children }) => {
     if (token) {
       try {
         const decoded = jwtDecode(token);
-        setUser({
-          email: decoded.sub,
-          userId: decoded.userId,
-        });
+        
+        // ✅ Extraer userId del token JWT
+        const userData = {
+          email: decoded.sub || decoded.email,
+          userId: decoded.userId, // ← Debe venir del backend
+          globalRole: decoded.globalRole,
+          tenantId: decoded.tenantId,
+        };
+        
+        console.log('🔑 Token decoded:', userData);
+        
+        // ✅ Verificar que userId existe
+        if (!userData.userId) {
+          console.error('❌ userId not found in token!');
+          console.log('Token claims:', decoded);
+          localStorage.removeItem('token');
+          setUser(null);
+        } else {
+          setUser(userData);
+        }
       } catch (error) {
-        console.error('Invalid token', error);
+        console.error('❌ Invalid token', error);
         localStorage.removeItem('token');
+        setUser(null);
       }
     }
     setLoading(false);
@@ -32,21 +47,37 @@ export const AuthProvider = ({ children }) => {
       const response = await authAPI.login({ email, password });
       const { token, refreshToken } = response.data;
       
+      // ✅ Guardar tokens
       localStorage.setItem('token', token);
       localStorage.setItem('refreshToken', refreshToken);
       
+      // ✅ Decodificar token
       const decoded = jwtDecode(token);
+      
+      console.log('✅ Login successful, token claims:', decoded);
+      
       const userData = {
-        email: decoded.sub,
+        email: decoded.sub || decoded.email,
         userId: decoded.userId,
+        globalRole: decoded.globalRole,
+        tenantId: decoded.tenantId,
       };
       
-      localStorage.setItem('userId', decoded.userId);
+      // ✅ Verificar userId
+      if (!userData.userId) {
+        console.error('❌ userId missing in login response!');
+        console.log('Token claims:', decoded);
+        return { 
+          success: false, 
+          error: 'Authentication error: userId not found in token' 
+        };
+      }
+      
       setUser(userData);
       
       return { success: true };
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('❌ Login error:', error);
       return { 
         success: false, 
         error: error.response?.data?.message || 'Login failed' 
@@ -59,21 +90,37 @@ export const AuthProvider = ({ children }) => {
       const response = await authAPI.register({ email, password, role });
       const { token, refreshToken } = response.data;
       
+      // ✅ Guardar tokens
       localStorage.setItem('token', token);
       localStorage.setItem('refreshToken', refreshToken);
       
+      // ✅ Decodificar token
       const decoded = jwtDecode(token);
+      
+      console.log('✅ Registration successful, token claims:', decoded);
+      
       const userData = {
-        email: decoded.sub,
+        email: decoded.sub || decoded.email,
         userId: decoded.userId,
+        globalRole: decoded.globalRole,
+        tenantId: decoded.tenantId,
       };
       
-      localStorage.setItem('userId', decoded.userId);
+      // ✅ Verificar userId
+      if (!userData.userId) {
+        console.error('❌ userId missing in registration response!');
+        console.log('Token claims:', decoded);
+        return { 
+          success: false, 
+          error: 'Registration error: userId not found in token' 
+        };
+      }
+      
       setUser(userData);
       
       return { success: true };
     } catch (error) {
-      console.error('Register error:', error);
+      console.error('❌ Register error:', error);
       return { 
         success: false, 
         error: error.response?.data?.message || 'Registration failed' 
@@ -84,7 +131,6 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
-    localStorage.removeItem('userId');
     setUser(null);
   };
 

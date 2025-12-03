@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import OAuth2Callback from './pages/OAuth2Callback';
 
 // Protected Route Component
 function ProtectedRoute({ children }) {
@@ -56,6 +57,9 @@ function App() {
               </PublicRoute>
             }
           />
+
+          {/* OAuth2 Callback */}
+          <Route path="/auth/callback" element={<OAuth2Callback />} />
 
           {/* Protected Routes */}
           <Route

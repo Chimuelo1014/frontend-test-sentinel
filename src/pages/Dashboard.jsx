@@ -9,7 +9,8 @@ import {
   Globe,
   CheckCircle2,
   AlertCircle,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -18,26 +19,30 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // ✅ FIX: Solo cargar tenants una vez cuando el componente monta
   useEffect(() => {
     if (user?.userId) {
       loadTenants();
     }
-  }, [user]); // <-- agregamos user como dependencia
+  }, []); // ← Dependencias vacías, solo se ejecuta al montar
 
   const loadTenants = async () => {
     try {
       setLoading(true);
       setError('');
-      const response = await tenantAPI.getMyTenants(user.userId); // <-- pasamos userId directamente
+      
+      // ✅ user.userId está disponible desde el contexto
+      const response = await tenantAPI.getMyTenants(user.userId);
       setTenants(response.data);
+      
+      console.log('✅ Tenants loaded:', response.data);
     } catch (err) {
-      console.error('Error loading tenants:', err);
-      setError('Failed to load tenants');
+      console.error('❌ Error loading tenants:', err);
+      setError(err.response?.data?.message || 'Failed to load tenants');
     } finally {
       setLoading(false);
     }
   };
-
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -67,21 +72,31 @@ export default function Dashboard() {
           <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
           <div>
             <p className="text-sm font-medium text-green-900">
-              ✅ Auth Service Working!
+              ✅ Authentication Working!
             </p>
             <p className="text-sm text-green-700 mt-1">
-              You're successfully authenticated. User ID: <code className="bg-green-100 px-1 py-0.5 rounded">{user?.userId}</code>
+              User ID: <code className="bg-green-100 px-1 py-0.5 rounded">{user?.userId}</code>
             </p>
           </div>
         </div>
 
         {/* Tenants Section */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Your Workspaces (Tenants)</h2>
-            <p className="text-sm text-gray-600 mt-1">
-              These were automatically created by tenant-service when you registered
-            </p>
+          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Your Workspaces (Tenants)</h2>
+              <p className="text-sm text-gray-600 mt-1">
+                Auto-created by tenant-service via RabbitMQ
+              </p>
+            </div>
+            <button
+              onClick={loadTenants}
+              disabled={loading}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
           </div>
 
           <div className="p-6">
@@ -108,8 +123,14 @@ export default function Dashboard() {
                 <Building2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600">No tenants found</p>
                 <p className="text-sm text-gray-500 mt-1">
-                  A tenant should have been created automatically
+                  🔄 Check RabbitMQ logs - Tenant should auto-create
                 </p>
+                <button
+                  onClick={loadTenants}
+                  className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+                >
+                  Refresh Tenants
+                </button>
               </div>
             ) : (
               <div className="space-y-4">
@@ -121,19 +142,25 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Communication Status */}
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Service Status */}
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
           <StatusCard
             title="Auth Service"
             status="online"
-            description="Authentication is working"
+            description="✅ Authentication working"
             port="8081"
           />
           <StatusCard
             title="Tenant Service"
             status={tenants.length > 0 ? 'online' : 'checking'}
-            description={tenants.length > 0 ? 'Communication successful' : 'Checking connection...'}
+            description={tenants.length > 0 ? '✅ Tenant created' : '⏳ Waiting for tenant...'}
             port="8082"
+          />
+          <StatusCard
+            title="RabbitMQ"
+            status={tenants.length > 0 ? 'online' : 'unknown'}
+            description={tenants.length > 0 ? '✅ Events flowing' : '⚠️ Check connection'}
+            port="5672"
           />
         </div>
       </main>
@@ -212,6 +239,7 @@ function StatusCard({ title, status, description, port }) {
     online: 'bg-green-100 text-green-800 border-green-200',
     offline: 'bg-red-100 text-red-800 border-red-200',
     checking: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+    unknown: 'bg-gray-100 text-gray-800 border-gray-200',
   };
 
   return (
