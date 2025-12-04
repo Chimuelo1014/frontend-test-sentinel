@@ -10,38 +10,63 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Mail,
+  UserPlus,
+  X,
+  Check,
+  Clock
 } from 'lucide-react';
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const [tenants, setTenants] = useState([]);
+  const [invitations, setInvitations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [selectedTenant, setSelectedTenant] = useState(null);
 
-  // ✅ FIX: Solo cargar tenants una vez cuando el componente monta
   useEffect(() => {
     if (user?.userId) {
-      loadTenants();
+      loadData();
     }
-  }, []); // ← Dependencias vacías, solo se ejecuta al montar
+  }, []);
+
+  const loadData = async () => {
+    await Promise.all([
+      loadTenants(),
+      loadInvitations()
+    ]);
+  };
 
   const loadTenants = async () => {
     try {
       setLoading(true);
       setError('');
-      
-      // ✅ user.userId está disponible desde el contexto
       const response = await tenantAPI.getMyTenants(user.userId);
       setTenants(response.data);
-      
-      console.log('✅ Tenants loaded:', response.data);
     } catch (err) {
       console.error('❌ Error loading tenants:', err);
       setError(err.response?.data?.message || 'Failed to load tenants');
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadInvitations = async () => {
+    try {
+      const response = await tenantAPI.getPendingInvitations(user.email);
+      setInvitations(response.data);
+      console.log('✅ Invitations loaded:', response.data);
+    } catch (err) {
+      console.error('❌ Error loading invitations:', err);
+    }
+  };
+
+  const handleInvite = (tenant) => {
+    setSelectedTenant(tenant);
+    setShowInviteModal(true);
   };
 
   return (
@@ -67,6 +92,16 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* Pending Invitations */}
+        {invitations.length > 0 && (
+          <InvitationsSection 
+            invitations={invitations} 
+            onAccept={() => loadData()}
+            onReject={() => loadData()}
+          />
+        )}
+
         {/* Success Alert */}
         <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-start gap-3">
           <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
@@ -84,9 +119,9 @@ export default function Dashboard() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Your Workspaces (Tenants)</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Your Workspaces</h2>
               <p className="text-sm text-gray-600 mt-1">
-                Auto-created by tenant-service via RabbitMQ
+                Tenants you own or are member of
               </p>
             </div>
             <button
@@ -122,56 +157,117 @@ export default function Dashboard() {
               <div className="text-center py-12">
                 <Building2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600">No tenants found</p>
-                <p className="text-sm text-gray-500 mt-1">
-                  🔄 Check RabbitMQ logs - Tenant should auto-create
-                </p>
-                <button
-                  onClick={loadTenants}
-                  className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
-                >
-                  Refresh Tenants
-                </button>
               </div>
             ) : (
               <div className="space-y-4">
                 {tenants.map((tenant) => (
-                  <TenantCard key={tenant.id} tenant={tenant} />
+                  <TenantCard 
+                    key={tenant.id} 
+                    tenant={tenant}
+                    onInvite={() => handleInvite(tenant)}
+                  />
                 ))}
               </div>
             )}
           </div>
         </div>
-
-        {/* Service Status */}
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <StatusCard
-            title="Auth Service"
-            status="online"
-            description="✅ Authentication working"
-            port="8081"
-          />
-          <StatusCard
-            title="Tenant Service"
-            status={tenants.length > 0 ? 'online' : 'checking'}
-            description={tenants.length > 0 ? '✅ Tenant created' : '⏳ Waiting for tenant...'}
-            port="8082"
-          />
-          <StatusCard
-            title="RabbitMQ"
-            status={tenants.length > 0 ? 'online' : 'unknown'}
-            description={tenants.length > 0 ? '✅ Events flowing' : '⚠️ Check connection'}
-            port="5672"
-          />
-        </div>
       </main>
+
+      {/* Invite Modal */}
+      {showInviteModal && (
+        <InviteModal
+          tenant={selectedTenant}
+          onClose={() => setShowInviteModal(false)}
+          onSuccess={() => {
+            setShowInviteModal(false);
+            loadTenants();
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function TenantCard({ tenant }) {
+function InvitationsSection({ invitations, onAccept, onReject }) {
+  const { user } = useAuth();
+
+  const handleAccept = async (token) => {
+    try {
+      await tenantAPI.acceptInvitation(token, user.userId);
+      onAccept();
+    } catch (err) {
+      console.error('Error accepting invitation:', err);
+      alert('Failed to accept invitation');
+    }
+  };
+
+  const handleReject = async (token) => {
+    try {
+      await tenantAPI.rejectInvitation(token, user.userId);
+      onReject();
+    } catch (err) {
+      console.error('Error rejecting invitation:', err);
+      alert('Failed to reject invitation');
+    }
+  };
+
+  return (
+    <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
+      <div className="flex items-center gap-3 mb-4">
+        <Mail className="w-6 h-6 text-blue-600" />
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Pending Invitations ({invitations.length})
+          </h3>
+          <p className="text-sm text-gray-600">You've been invited to join workspaces</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {invitations.map((invitation) => (
+          <div
+            key={invitation.id}
+            className="bg-white border border-blue-200 rounded-lg p-4 flex items-center justify-between"
+          >
+            <div>
+              <p className="font-medium text-gray-900">{invitation.tenantName}</p>
+              <p className="text-sm text-gray-600">
+                Invited by <span className="font-medium">{invitation.invitedByEmail}</span>
+                {' '}as <span className="font-medium">{invitation.role}</span>
+              </p>
+              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                Expires {new Date(invitation.expiresAt).toLocaleDateString()}
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleAccept(invitation.invitationToken)}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+              >
+                <Check className="w-4 h-4" />
+                Accept
+              </button>
+              <button
+                onClick={() => handleReject(invitation.invitationToken)}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+              >
+                <X className="w-4 h-4" />
+                Decline
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TenantCard({ tenant, onInvite }) {
   return (
     <div className="border border-gray-200 rounded-lg p-6 hover:border-indigo-300 transition">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between mb-4">
         <div className="flex items-start gap-4">
           <div className="p-3 bg-indigo-100 rounded-lg">
             <Building2 className="w-6 h-6 text-indigo-600" />
@@ -187,16 +283,21 @@ function TenantCard({ tenant }) {
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                 {tenant.plan} Plan
               </span>
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                {tenant.type}
-              </span>
             </div>
           </div>
         </div>
+
+        <button
+          onClick={onInvite}
+          className="flex items-center gap-2 px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+        >
+          <UserPlus className="w-4 h-4" />
+          Invite
+        </button>
       </div>
 
       {/* Stats */}
-      <div className="mt-6 grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <StatItem
           icon={<Users className="w-4 h-4" />}
           label="Users"
@@ -234,24 +335,100 @@ function StatItem({ icon, label, current, max }) {
   );
 }
 
-function StatusCard({ title, status, description, port }) {
-  const statusColors = {
-    online: 'bg-green-100 text-green-800 border-green-200',
-    offline: 'bg-red-100 text-red-800 border-red-200',
-    checking: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-    unknown: 'bg-gray-100 text-gray-800 border-gray-200',
+function InviteModal({ tenant, onClose, onSuccess }) {
+  const { user } = useAuth();
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('TENANT_USER');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      await tenantAPI.inviteMember(tenant.id, user.userId, { email, role });
+      alert('Invitation sent successfully!');
+      onSuccess();
+    } catch (err) {
+      console.error('Error inviting member:', err);
+      setError(err.response?.data?.message || 'Failed to send invitation');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-900">{title}</h3>
-        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColors[status]}`}>
-          {status}
-        </span>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-xl font-bold text-gray-900">Invite Member</h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <p className="text-sm text-gray-600 mb-4">
+          Invite someone to join <span className="font-medium">{tenant.name}</span>
+        </p>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Email Address
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              placeholder="colleague@example.com"
+              required
+            />
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Role
+            </label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="TENANT_USER">Member</option>
+              <option value="TENANT_ADMIN">Admin</option>
+            </select>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
+            >
+              {loading ? 'Sending...' : 'Send Invitation'}
+            </button>
+          </div>
+        </form>
       </div>
-      <p className="text-sm text-gray-600">{description}</p>
-      <p className="text-xs text-gray-500 mt-2">Port: {port}</p>
     </div>
   );
 }

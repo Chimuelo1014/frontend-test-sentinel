@@ -74,6 +74,51 @@ export const tenantAPI = {
       }
     });
   },
+
+  // ✅ Invitations
+  inviteMember: (tenantId, userId, data) => {
+    return axios.post(`http://localhost:8082/api/tenants/${tenantId}/invitations`, data, {
+      headers: {
+        'X-User-Id': userId,
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    });
+  },
+
+  getPendingInvitations: (email) => {
+    return axios.get('http://localhost:8082/api/tenants/invitations/pending', {
+      headers: {
+        'X-User-Email': email,
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    });
+  },
+
+  acceptInvitation: (token, userId) => {
+    return axios.post(`http://localhost:8082/api/tenants/invitations/${token}/accept`, {}, {
+      headers: {
+        'X-User-Id': userId,
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    });
+  },
+
+  rejectInvitation: (token, userId) => {
+    return axios.post(`http://localhost:8082/api/tenants/invitations/${token}/reject`, {}, {
+      headers: {
+        'X-User-Id': userId,
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    });
+  },
+
+  getTenantInvitations: (tenantId) => {
+    return axios.get(`http://localhost:8082/api/tenants/${tenantId}/invitations`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      }
+    });
+  },
 };
 
 export default api;
