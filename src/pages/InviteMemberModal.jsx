@@ -1,12 +1,68 @@
-import { useState } from 'react';
-import { X, Mail, UserPlus, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, Mail, UserPlus, CheckSquare, Square, FolderKanban } from 'lucide-react';
 import axios from 'axios';
 
 export default function InviteMemberModal({ tenantId, tenantName, isOpen, onClose, onSuccess }) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('TENANT_USER');
+  const [projects, setProjects] = useState([]);
+  const [selectedProjects, setSelectedProjects] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadingProjects, setLoadingProjects] = useState(false);
   const [error, setError] = useState('');
+
+  // ✅ Cargar proyectos del tenant
+  useEffect(() => {
+    if (isOpen && tenantId) {
+      loadProjects();
+    }
+    
+    // Cleanup al cerrar
+    if (!isOpen) {
+      setEmail('');
+      setRole('TENANT_USER');
+      setSelectedProjects([]);
+      setError('');
+    }
+  }, [isOpen, tenantId]);
+
+  const loadProjects = async () => {
+    setLoadingProjects(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(
+        `http://localhost:8084/api/projects?tenantId=${tenantId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+      setProjects(response.data || []);
+      console.log('✅ Projects loaded:', response.data);
+    } catch (err) {
+      console.error('❌ Error loading projects:', err);
+      setProjects([]);
+    } finally {
+      setLoadingProjects(false);
+    }
+  };
+
+  const toggleProject = (projectId) => {
+    setSelectedProjects(prev => 
+      prev.includes(projectId)
+        ? prev.filter(id => id !== projectId)
+        : [...prev, projectId]
+    );
+  };
+
+  const selectAllProjects = () => {
+    if (selectedProjects.length === projects.length) {
+      setSelectedProjects([]);
+    } else {
+      setSelectedProjects(projects.map(p => p.id));
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -28,6 +84,7 @@ export default function InviteMemberModal({ tenantId, tenantName, isOpen, onClos
         email,
         role,
         tenantId,
+        projectIds: selectedProjects,
         userId,
         userEmail
       });
@@ -36,8 +93,8 @@ export default function InviteMemberModal({ tenantId, tenantName, isOpen, onClos
         `http://localhost:8083/api/tenants/${tenantId}/members/invite`,
         {
           email,
-          role
-          // resourceName is optional, backend will handle it
+          role,
+          projectIds: selectedProjects
         },
         {
           headers: {
@@ -51,11 +108,7 @@ export default function InviteMemberModal({ tenantId, tenantName, isOpen, onClos
 
       console.log('✅ Invitation sent:', response.data);
 
-      // Reset form
-      setEmail('');
-      setRole('TENANT_USER');
-
-      // Call success callback
+      // Success callback
       if (onSuccess) {
         onSuccess(response.data);
       }
@@ -95,9 +148,9 @@ export default function InviteMemberModal({ tenantId, tenantName, isOpen, onClos
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-indigo-100 rounded-lg">
               <UserPlus className="w-5 h-5 text-indigo-600" />
@@ -116,7 +169,7 @@ export default function InviteMemberModal({ tenantId, tenantName, isOpen, onClos
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
           {/* Error Alert */}
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
@@ -145,7 +198,7 @@ export default function InviteMemberModal({ tenantId, tenantName, isOpen, onClos
           {/* Role Select */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Role
+              Tenant Role
             </label>
             <select
               value={role}
@@ -159,6 +212,68 @@ export default function InviteMemberModal({ tenantId, tenantName, isOpen, onClos
               {role === 'TENANT_ADMIN' 
                 ? '🔐 Full access to manage workspace and members' 
                 : '👤 Can create and view projects'}
+            </p>
+          </div>
+
+          {/* Project Selection */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <label className="block text-sm font-medium text-gray-700">
+                Project Access (Optional)
+              </label>
+              {projects.length > 0 && (
+                <button
+                  type="button"
+                  onClick={selectAllProjects}
+                  className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                >
+                  {selectedProjects.length === projects.length ? 'Deselect All' : 'Select All'}
+                </button>
+              )}
+            </div>
+
+            {loadingProjects ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+              </div>
+            ) : projects.length === 0 ? (
+              <div className="text-center py-8 bg-gray-50 rounded-lg">
+                <FolderKanban className="w-10 h-10 text-gray-400 mx-auto mb-2" />
+                <p className="text-sm text-gray-600">No projects in this workspace yet</p>
+                <p className="text-xs text-gray-500 mt-1">Create projects first to grant access</p>
+              </div>
+            ) : (
+              <div className="border border-gray-200 rounded-lg divide-y divide-gray-200 max-h-60 overflow-y-auto">
+                {projects.map((project) => (
+                  <label
+                    key={project.id}
+                    className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer transition"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleProject(project.id)}
+                      className="flex-shrink-0"
+                    >
+                      {selectedProjects.includes(project.id) ? (
+                        <CheckSquare className="w-5 h-5 text-indigo-600" />
+                      ) : (
+                        <Square className="w-5 h-5 text-gray-400" />
+                      )}
+                    </button>
+                    <div className="flex-1">
+                      <p className="font-medium text-gray-900">{project.name}</p>
+                      {project.description && (
+                        <p className="text-sm text-gray-500">{project.description}</p>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <p className="mt-2 text-sm text-gray-500">
+              💡 Selected projects: <strong>{selectedProjects.length}</strong>
+              {selectedProjects.length > 0 && ' - User will be added as PROJECT_MEMBER'}
             </p>
           </div>
 
@@ -178,7 +293,7 @@ export default function InviteMemberModal({ tenantId, tenantName, isOpen, onClos
             >
               {loading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                   Sending...
                 </>
               ) : (
@@ -192,9 +307,10 @@ export default function InviteMemberModal({ tenantId, tenantName, isOpen, onClos
         </form>
 
         {/* Info */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-lg">
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
           <p className="text-xs text-gray-600">
-            💡 <strong>Note:</strong> The invitation will be sent to the email address and will expire in 7 days.
+            💡 <strong>Note:</strong> The invitation will expire in 7 days. The user will be added to the tenant
+            {selectedProjects.length > 0 && ` and ${selectedProjects.length} selected project(s)`}.
           </p>
         </div>
       </div>
