@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import ProjectsPage from './pages/ProjectsPage';
 import OAuth2Callback from './pages/OAuth2Callback';
 
 // Protected Route Component
@@ -67,6 +68,16 @@ function App() {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ✅ NUEVA RUTA: Proyectos de un tenant */}
+          <Route
+            path="/tenants/:tenantId/projects"
+            element={
+              <ProtectedRoute>
+                <ProjectsPage />
               </ProtectedRoute>
             }
           />

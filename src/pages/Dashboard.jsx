@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { tenantAPI } from '../services/api';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import {
   LogOut,
   Building2,
@@ -17,12 +18,15 @@ import {
   X,
   Check,
   Clock,
-  GitBranch
+  GitBranch,
+  ChevronRight,
+  Bug
 } from 'lucide-react';
 import InviteMemberModal from './InviteMemberModal';
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [tenants, setTenants] = useState([]);
   const [invitations, setInvitations] = useState([]);
   const [userProjects, setUserProjects] = useState({});
@@ -30,47 +34,105 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState(null);
+  const [debugInfo, setDebugInfo] = useState({});
 
   useEffect(() => {
+    console.log('🔵 Dashboard mounted');
+    console.log('🔵 User:', user);
+    
     if (user?.userId) {
       loadData();
+    } else {
+      console.warn('⚠️ No user found!');
     }
-  }, []);
+  }, [user]);
 
   const loadData = async () => {
+    console.log('🔄 Loading all data...');
+    setLoading(true);
+    
     await Promise.all([
       loadTenants(),
       loadInvitations(),
       loadUserProjects()
     ]);
+    
+    setLoading(false);
+    console.log('✅ All data loaded');
   };
 
   const loadTenants = async () => {
     try {
-      setLoading(true);
       setError('');
+      console.log('🔄 Loading tenants for user:', user.userId);
+      console.log('📡 URL:', `http://localhost:8082/api/tenants/me`);
+      console.log('📡 Headers:', { 'X-User-Id': user.userId });
+      
       const response = await tenantAPI.getMyTenants(user.userId);
-      setTenants(response.data);
+      
+      console.log('✅ Tenants Response:', response);
+      console.log('✅ Tenants Data:', response.data);
+      console.log('✅ Tenants Count:', response.data?.length);
+      
+      setTenants(response.data || []);
+      
+      setDebugInfo(prev => ({
+        ...prev,
+        tenantsLoaded: true,
+        tenantsCount: response.data?.length || 0,
+        tenantsData: response.data
+      }));
+      
     } catch (err) {
       console.error('❌ Error loading tenants:', err);
-      setError(err.response?.data?.message || 'Failed to load tenants');
-    } finally {
-      setLoading(false);
+      console.error('❌ Error response:', err.response);
+      console.error('❌ Error message:', err.message);
+      
+      setError(err.response?.data?.message || err.message || 'Failed to load tenants');
+      
+      setDebugInfo(prev => ({
+        ...prev,
+        tenantsError: err.message,
+        tenantsResponse: err.response?.data
+      }));
     }
   };
 
   const loadInvitations = async () => {
     try {
+      console.log('🔄 Loading invitations for:', user.email);
+      console.log('📡 URL:', `http://localhost:8082/api/tenants/invitations/pending`);
+      
       const response = await tenantAPI.getPendingInvitations(user.email);
-      setInvitations(response.data);
-      console.log('✅ Invitations loaded:', response.data);
+      
+      console.log('✅ Invitations Response:', response);
+      console.log('✅ Invitations Data:', response.data);
+      console.log('✅ Invitations Count:', response.data?.length);
+      
+      setInvitations(response.data || []);
+      
+      setDebugInfo(prev => ({
+        ...prev,
+        invitationsLoaded: true,
+        invitationsCount: response.data?.length || 0,
+        invitationsData: response.data
+      }));
+      
     } catch (err) {
       console.error('❌ Error loading invitations:', err);
+      console.error('❌ Error response:', err.response);
+      
+      setDebugInfo(prev => ({
+        ...prev,
+        invitationsError: err.message
+      }));
     }
   };
 
   const loadUserProjects = async () => {
     try {
+      console.log('🔄 Loading user projects for:', user.userId);
+      
       const token = localStorage.getItem('token');
       const response = await axios.get(
         `http://localhost:8083/api/internal/users/${user.userId}/projects`,
@@ -81,7 +143,8 @@ export default function Dashboard() {
         }
       );
       
-      // Agrupar proyectos por tenant
+      console.log('✅ Projects Response:', response.data);
+      
       const projectsByTenant = {};
       for (const project of response.data) {
         if (!projectsByTenant[project.tenantId]) {
@@ -91,15 +154,34 @@ export default function Dashboard() {
       }
       
       setUserProjects(projectsByTenant);
-      console.log('✅ User projects loaded:', projectsByTenant);
+      console.log('✅ Projects by Tenant:', projectsByTenant);
+      
+      setDebugInfo(prev => ({
+        ...prev,
+        projectsLoaded: true,
+        projectsCount: response.data?.length || 0,
+        projectsByTenant
+      }));
+      
     } catch (err) {
       console.error('❌ Error loading projects:', err);
+      
+      setDebugInfo(prev => ({
+        ...prev,
+        projectsError: err.message
+      }));
     }
   };
 
   const handleInvite = (tenant) => {
+    console.log('📨 Opening invite modal for tenant:', tenant);
     setSelectedTenant(tenant);
     setShowInviteModal(true);
+  };
+
+  const handleViewProjects = (tenantId) => {
+    console.log('🔍 Navigating to projects for tenant:', tenantId);
+    navigate(`/tenants/${tenantId}/projects`);
   };
 
   return (
@@ -112,13 +194,28 @@ export default function Dashboard() {
               <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
               <p className="text-sm text-gray-600 mt-1">Welcome back, {user?.email}</p>
             </div>
-            <button
-              onClick={logout}
-              className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition"
-            >
-              <LogOut className="w-5 h-5" />
-              <span>Logout</span>
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  console.log('🐛 Debug Info:', debugInfo);
+                  console.log('🐛 Tenants:', tenants);
+                  console.log('🐛 Invitations:', invitations);
+                  console.log('🐛 Projects:', userProjects);
+                  alert('Check console for debug info');
+                }}
+                className="flex items-center gap-2 px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition"
+              >
+                <Bug className="w-4 h-4" />
+                Debug
+              </button>
+              <button
+                onClick={logout}
+                className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition"
+              >
+                <LogOut className="w-5 h-5" />
+                <span>Logout</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -126,6 +223,13 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
+        {/* Debug Info */}
+        <div className="mb-6 p-4 bg-gray-50 border border-gray-300 rounded-lg">
+          <p className="text-sm font-mono text-gray-700">
+            <strong>Debug:</strong> Tenants: {tenants.length} | Invitations: {invitations.length} | User: {user?.userId?.substring(0, 8)}...
+          </p>
+        </div>
+
         {/* Pending Invitations */}
         {invitations.length > 0 && (
           <InvitationsSection 
@@ -154,11 +258,14 @@ export default function Dashboard() {
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Your Workspaces</h2>
               <p className="text-sm text-gray-600 mt-1">
-                Tenants you own or are member of
+                {loading ? 'Loading...' : `${tenants.length} workspace${tenants.length !== 1 ? 's' : ''} found`}
               </p>
             </div>
             <button
-              onClick={loadTenants}
+              onClick={() => {
+                console.log('🔄 Manual refresh triggered');
+                loadData();
+              }}
               disabled={loading}
               className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition disabled:opacity-50"
             >
@@ -179,7 +286,10 @@ export default function Dashboard() {
                   <p className="text-sm font-medium text-red-900">Error loading tenants</p>
                   <p className="text-sm text-red-700 mt-1">{error}</p>
                   <button
-                    onClick={loadTenants}
+                    onClick={() => {
+                      console.log('🔄 Retry clicked');
+                      loadTenants();
+                    }}
                     className="mt-2 text-sm text-red-600 hover:text-red-700 font-medium"
                   >
                     Try again
@@ -190,6 +300,9 @@ export default function Dashboard() {
               <div className="text-center py-12">
                 <Building2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600">No tenants found</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Check console for debug information
+                </p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -199,6 +312,7 @@ export default function Dashboard() {
                     tenant={tenant}
                     projects={userProjects[tenant.id] || []}
                     onInvite={() => handleInvite(tenant)}
+                    onViewProjects={() => handleViewProjects(tenant.id)}
                   />
                 ))}
               </div>
@@ -208,13 +322,17 @@ export default function Dashboard() {
       </main>
 
       {/* Invite Modal */}
-      {showInviteModal && (
+      {showInviteModal && selectedTenant && (
         <InviteMemberModal
           tenantId={selectedTenant.id}
           tenantName={selectedTenant.name}
           isOpen={showInviteModal}
-          onClose={() => setShowInviteModal(false)}
+          onClose={() => {
+            console.log('🚪 Closing invite modal');
+            setShowInviteModal(false);
+          }}
           onSuccess={() => {
+            console.log('✅ Invitation sent successfully');
             setShowInviteModal(false);
             loadTenants();
           }}
@@ -229,21 +347,23 @@ function InvitationsSection({ invitations, onAccept, onReject }) {
 
   const handleAccept = async (token) => {
     try {
+      console.log('✅ Accepting invitation:', token);
       await tenantAPI.acceptInvitation(token, user.userId);
       onAccept();
     } catch (err) {
-      console.error('Error accepting invitation:', err);
-      alert('Failed to accept invitation');
+      console.error('❌ Error accepting invitation:', err);
+      alert('Failed to accept invitation: ' + err.message);
     }
   };
 
   const handleReject = async (token) => {
     try {
+      console.log('❌ Rejecting invitation:', token);
       await tenantAPI.rejectInvitation(token, user.userId);
       onReject();
     } catch (err) {
-      console.error('Error rejecting invitation:', err);
-      alert('Failed to reject invitation');
+      console.error('❌ Error rejecting invitation:', err);
+      alert('Failed to reject invitation: ' + err.message);
     }
   };
 
@@ -260,70 +380,77 @@ function InvitationsSection({ invitations, onAccept, onReject }) {
       </div>
 
       <div className="space-y-3">
-        {invitations.map((invitation) => (
-          <div
-            key={invitation.id}
-            className="bg-white border border-blue-200 rounded-lg p-4"
-          >
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="font-medium text-gray-900">{invitation.tenantName || invitation.resourceName}</p>
-                <p className="text-sm text-gray-600">
-                  Invited by <span className="font-medium">{invitation.invitedByEmail || invitation.inviterEmail}</span>
-                  {' '}as <span className="font-medium">{invitation.role}</span>
-                </p>
-                <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  Expires {new Date(invitation.expiresAt).toLocaleDateString()}
-                </p>
-              </div>
+        {invitations.map((invitation) => {
+          console.log('📨 Rendering invitation:', invitation);
+          
+          return (
+            <div
+              key={invitation.id}
+              className="bg-white border border-blue-200 rounded-lg p-4"
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <p className="font-medium text-gray-900">
+                    {invitation.tenantName || invitation.resourceName || 'Unknown Tenant'}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Invited by <span className="font-medium">{invitation.invitedByEmail || invitation.inviterEmail || 'Unknown'}</span>
+                    {' '}as <span className="font-medium">{invitation.role || 'MEMBER'}</span>
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    Expires {invitation.expiresAt ? new Date(invitation.expiresAt).toLocaleDateString() : 'Unknown'}
+                  </p>
+                </div>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleAccept(invitation.token)}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
-                >
-                  <Check className="w-4 h-4" />
-                  Accept
-                </button>
-                <button
-                  onClick={() => handleReject(invitation.token)}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
-                >
-                  <X className="w-4 h-4" />
-                  Decline
-                </button>
-              </div>
-            </div>
-
-            {/* ✅ Mostrar proyectos incluidos */}
-            {invitation.projects && invitation.projects.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-gray-200">
-                <p className="text-xs font-medium text-gray-700 mb-2 flex items-center gap-1">
-                  <GitBranch className="w-3 h-3" />
-                  Included Projects ({invitation.projects.length}):
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {invitation.projects.map((project) => (
-                    <span
-                      key={project.id}
-                      className="inline-flex items-center px-2 py-1 rounded-md text-xs bg-indigo-100 text-indigo-800"
-                    >
-                      {project.name}
-                    </span>
-                  ))}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleAccept(invitation.token || invitation.invitationToken)}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                  >
+                    <Check className="w-4 h-4" />
+                    Accept
+                  </button>
+                  <button
+                    onClick={() => handleReject(invitation.token || invitation.invitationToken)}
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                  >
+                    <X className="w-4 h-4" />
+                    Decline
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
-        ))}
+
+              {invitation.projects && invitation.projects.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <p className="text-xs font-medium text-gray-700 mb-2 flex items-center gap-1">
+                    <GitBranch className="w-3 h-3" />
+                    Included Projects ({invitation.projects.length}):
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {invitation.projects.map((project) => (
+                      <span
+                        key={project.id}
+                        className="inline-flex items-center px-2 py-1 rounded-md text-xs bg-indigo-100 text-indigo-800"
+                      >
+                        {project.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function TenantCard({ tenant, projects, onInvite }) {
+function TenantCard({ tenant, projects, onInvite, onViewProjects }) {
   const [showProjects, setShowProjects] = useState(false);
+
+  console.log('🏢 Rendering TenantCard:', tenant.name, 'Projects:', projects.length);
 
   return (
     <div className="border border-gray-200 rounded-lg p-6 hover:border-indigo-300 transition">
@@ -333,7 +460,19 @@ function TenantCard({ tenant, projects, onInvite }) {
             <Building2 className="w-6 h-6 text-indigo-600" />
           </div>
           <div className="flex-1">
-            <h3 className="font-semibold text-gray-900">{tenant.name}</h3>
+            <div className="flex items-center gap-3">
+              <h3 className="font-semibold text-gray-900">{tenant.name}</h3>
+              <button
+                onClick={() => {
+                  console.log('🔍 View Projects clicked for:', tenant.id);
+                  onViewProjects();
+                }}
+                className="flex items-center gap-1 px-3 py-1.5 text-sm text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg font-medium transition"
+              >
+                View Projects
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
             <p className="text-sm text-gray-500 mt-1">/{tenant.slug}</p>
 
             <div className="flex items-center gap-4 mt-3">
@@ -357,7 +496,10 @@ function TenantCard({ tenant, projects, onInvite }) {
         </div>
 
         <button
-          onClick={onInvite}
+          onClick={() => {
+            console.log('📨 Invite clicked for:', tenant.id);
+            onInvite();
+          }}
           className="flex items-center gap-2 px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
         >
           <UserPlus className="w-4 h-4" />
@@ -365,7 +507,6 @@ function TenantCard({ tenant, projects, onInvite }) {
         </button>
       </div>
 
-      {/* ✅ Mostrar proyectos del usuario */}
       {showProjects && projects.length > 0 && (
         <div className="mt-4 pt-4 border-t border-gray-200">
           <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
@@ -388,7 +529,6 @@ function TenantCard({ tenant, projects, onInvite }) {
         </div>
       )}
 
-      {/* Stats */}
       <div className="grid grid-cols-3 gap-4 mt-4">
         <StatItem
           icon={<Users className="w-4 h-4" />}
@@ -410,7 +550,6 @@ function TenantCard({ tenant, projects, onInvite }) {
         />
       </div>
 
-      {/* ✅ Plan Limits Warning */}
       {tenant.limits && (
         <PlanLimitWarning tenant={tenant} />
       )}
